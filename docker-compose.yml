@@ -1,0 +1,70 @@
+version: '3'
+
+services:
+
+  sentilo-mongodb:
+    image: mongo:4.1
+    container_name: sentilo-mongodb
+    networks:
+      - sentilo-network
+    ports:
+      - 27017:27017
+    restart: always
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=root
+    volumes:
+      - ./mongo-init/:/docker-entrypoint-initdb.d/:ro
+      
+  sentilo-redis:
+    image: redis
+    container_name: sentilo-redis
+    networks:
+      - sentilo-network
+    ports:
+      - 6379:6379
+    restart: always
+    command: redis-server --requirepass sentilo
+    
+  sentilo-catalog-web:
+    image: sentilo-catalog-web
+    networks:
+      - sentilo-network
+    ports:
+      - 8080:8080
+    restart: on-failure
+    depends_on:
+      - sentilo-mongodb
+    environment:
+      - catalog.mongodb.host=sentilo-mongodb
+      - catalog.mongodb.port=27017
+      - catalog.mongodb.database=sentilo
+      - catalog.mongodb.user=sentilo
+      - catalog.mongodb.password=sentilo
+      - catalog.api.client.ip=sentilo-platform-server
+      - rest.client.host=http://sentilo-platform-server:8081
+    healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8080/sentilo-catalog-web"]
+        interval: 30s
+        timeout: 10s
+        retries: 5
+
+  sentilo-platform-server:
+    image: sentilo-platform-server
+    networks:
+      - sentilo-network
+    ports:
+      - 8081:8081
+      - 7081:7081
+    restart: on-failure
+    depends_on:
+      - sentilo-redis
+      - sentilo-catalog-web
+    healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8081/admin/ping", "-H", "IDENTITY_KEY: c956c302086a042dd0426b4e62652273e05a6ce74d0b77f8b5602e0811025066"]
+        interval: 30s
+        timeout: 10s
+        retries: 5
+
+networks:
+  sentilo-network:
